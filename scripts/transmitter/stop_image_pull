@@ -1,0 +1,4 @@
+#!/bin/sh
+# Image Pull(TM) Copyright 2013 Just Add Power - All Rights Reserved
+# kill all running image_pull
+pkill -9 image_pull

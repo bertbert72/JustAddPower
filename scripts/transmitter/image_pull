@@ -1,0 +1,9 @@
+#!/bin/sh
+# Image Pull(TM) Copyright 2013 Just Add Power - All Rights Reserved
+# USE start_image_pull TO BEGIN
+while [ -e /dev/videoip ] ; do
+echo $1 $2 > /dev/videoip
+cat /dev/videoip > tmp.bmp
+mv tmp.bmp /www/pull.bmp
+sleep $3
+done

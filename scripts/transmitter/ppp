@@ -1,0 +1,653 @@
+#!/bin/bash
+## ppp
+## Plug-Play-Present(TM) - Copyright Just Add Power
+## Last modified 2017-08-28 - Just Add Power
+
+code(){
+	echo "Plug-Play-Present(TM) Help"
+	echo " Command:"
+	echo "  ppp"
+	echo " Options:"
+	echo "  [enable|disable|set|clear|power]"
+	echo "  (Transmitter Only)"
+	echo "   enable [power|switch|vw]"
+	echo "   disable [power|switch|vw]"
+	echo "   set timeout [seconds]"
+	echo "   set [power|switch] target [list of rx]"
+	echo "   set vw target [#,rXcY,RxC] [#,rXcY,RxC] [...]"
+	echo "   clear [timeout|vw|switch|all]"
+	echo "  (Receiver Only)"
+	echo "   set power method [cec|rs232|ir]"
+	echo '   set power [on|off] "[custom tv control command goes here]"'
+	echo "   clear [power [method|on|off]|all]"
+	echo "   power [on|off]"
+	echo " Details:"
+	echo "  ppp disable - Stops Plug-Play-Present from running (no features will work, regardless of other settings)"
+	echo "  ppp enable power - Enables the Power Control feature within Plug-Play-Present"
+	echo "  ppp disable vw - Disables the Video Wall Control feature of Plug-Play-Present"
+	echo "  ppp set timeout [seconds] - Sets the Transmitter to delay detection of HDMI unplug for [#] seconds"
+	echo "  ppp set power method cec - Sets the Receiver to control power of the connected TV via CEC"
+	echo "  ppp clear all - Clears all Plug-Play-Present settings"
+	echo " Example:"
+	echo "  ppp set switch target 1-3,5,7-9"
+	echo "   - Sets the Transmitter to switch Receivers 1,2,3,5,7,8,9 to watch itself when HDMI is plugged in"
+	echo "  ppp set vw target 1,r1c1,2x2 2,r1c2,2x2 3,2x2 4,r2c2,2x2"
+	echo "   - Sets the Transmitter to change Receivers 1,2,3,4 into a 2x2 video wall when HDMI is plugged in"
+	echo '  ppp set power on "ka 01 01"'
+	echo '   - Sets the Receiver Power On command to "ka 01 01" to fire when a "ppp power on" command is received'
+}
+notify_invalid_option(){
+	if [ "$1" == "" ];then
+		echo "PPP: Missing Parameter"
+	else
+		echo "PPP: ERROR! Invalid Option or Command Syntax [$1]"
+	fi
+	echo "PPP: Type 'ppp help' for full Plug-Play-Present(TM) command syntax details"
+	exit
+}
+notify_invalid_hardware(){
+	if [ $ISTX -eq 1 ];then
+		echo "PPP: ERROR! Invalid Transmitter Option"
+	else
+		echo "PPP: ERROR! Invalid Receiver Option"
+	fi
+	exit
+}
+set_parameters(){
+	case $1 in
+		enable)
+			if [ "$2" ];then
+				case $2 in
+					power) 
+						astparam s ppp_enable_power y
+						echo "PPP: Power Control Enabled"
+					;;
+					switch) 
+						astparam s ppp_enable_switch y
+						echo "PPP: Switch Control Enabled"
+					;;
+					vw) 
+						astparam s ppp_enable_vw y
+						echo "PPP: Video Wall Control Enabled"
+					;;
+					*)
+						notify_invalid_option $2
+					;;
+				esac
+			else
+				echo "PPP: Plug-Play-Present(TM) Enabled"
+				astparam s ppp_enable y
+			fi
+		;;
+		disable)
+			if [ "$2" ];then
+				case $2 in
+					power) 
+						astparam s ppp_enable_power n
+						echo "PPP: Power Control Disabled"
+					;;
+					switch) 
+						astparam s ppp_enable_switch n
+						echo "PPP: Switch Control Disabled"
+					;;
+					vw) 
+						astparam s ppp_enable_vw n
+						echo "PPP: Video Wall Control Disabled"
+					;;
+					*)
+						notify_invalid_option $2
+					;;
+				esac
+			else
+				echo "PPP: Plug-Play-Present(TM) Disabled"
+				astparam s ppp_enable n
+			fi
+		;;
+		set)
+			case $2 in
+				timeout)
+					if [ $ISTX -eq 0 ];then
+						notify_invalid_hardware
+					fi
+					if [ $3 -eq $3 ] 2>/dev/null;then
+						if ! [ "$3" == "" ];then
+							astparam s ppp_timeout $3 &>/dev/null
+							echo "PPP: HDMI Disconnect Detection Delay set to $3 seconds"
+						else
+							notify_invalid_option $3
+						fi
+					else
+						notify_invalid_option $3
+					fi
+				;;
+				switch)
+					if [ $ISTX -eq 0 ];then
+						notify_invalid_hardware
+					fi
+					if [ "$3" == "target" ];then
+						SWVALIDATE=($(echo $4 | tr ',-' ' '))
+						for i in ${!SWVALIDATE[*]};do
+							if ! [ ${SWVALIDATE[i]} -eq ${SWVALIDATE[i]} ] 2>/dev/null;then
+								notify_invalid_option ${SWVALIDATE[i]}
+							fi
+						done
+						if ! [ "$3" == "" ];then
+							astparam s ppp_switch_target $4 &>/dev/null
+							echo "PPP: New Switch Control Targets (Receivers $4) Saved"
+						else
+							notify_invalid_option $3
+						fi
+					else
+						notify_invalid_option $4
+					fi
+				;;
+				vw)
+					if [ $ISTX -eq 0 ];then
+						notify_invalid_hardware
+					fi
+					if ! [ "$3" == "" ];then
+						case $3 in
+							target) 
+								if [ "$4" == "" ];then
+									notify_invalid_option $4
+								fi
+								VWVALIDATE=($(echo $@ | cut -d' ' -f4-))
+								for i in ${!VWVALIDATE[*]};do
+									RXVALIDATE=($(echo ${VWVALIDATE[i]} | cut -d',' -f1))
+									if [ $RXVALIDATE -eq $RXVALIDATE ] 2>/dev/null;then
+										TARGET_POS=$(echo ${VWVALIDATE[i]} | cut -d',' -f2)
+										MY_ROW=$(($(echo $TARGET_POS | cut -d'r' -f2 | cut -d'c' -f1) - 1))
+										MY_COL=$(($(echo $TARGET_POS | cut -d'r' -f2 | cut -d'c' -f2) - 1))
+										if ! [ $MY_ROW -eq $MY_ROW ] 2>/dev/null || ! [ $MY_COL -eq $MY_COL ] 2>/dev/null;then
+											notify_invalid_option ${VWVALIDATE[i]}
+										fi
+										TARGET_SIZE=$(echo ${VWVALIDATE[i]} | cut -d',' -f3)
+										TOTAL_ROW=$(($(echo $TARGET_SIZE | cut -d'x' -f1) - 1))
+										TOTAL_COL=$(($(echo $TARGET_SIZE | cut -d'x' -f2) - 1))
+										if ! [ $TOTAL_ROW -eq $TOTAL_ROW ] 2>/dev/null || ! [ $TOTAL_COL -eq $TOTAL_COL ] 2>/dev/null;then
+											notify_invalid_option ${VWVALIDATE[i]}
+										fi
+										if [ $MY_ROW -gt $TOTAL_ROW ] || [ $MY_COL -gt $TOTAL_COL ];then
+											notify_invalid_option ${VWVALIDATE[i]}
+										fi
+									else
+										notify_invalid_option ${VWVALIDATE[i]}
+									fi
+								done
+								astparam s ppp_vw_target ${VWVALIDATE[@]}
+								echo "PPP: New Video Wall Targets Saved:"
+								for i in ${!VWVALIDATE[*]};do
+									echo "PPP: ${VWVALIDATE[i]}"
+								done
+							;;
+							*) 
+								notify_invalid_option $3
+							;;
+						esac
+					else
+						notify_invalid_option $3
+					fi
+				;;
+				power)
+					COMMAND=$(echo $@ | cut -d' ' -f4-)
+					case $3 in
+						on)
+							if [ $ISTX -eq 1 ];then
+								notify_invalid_hardware
+							fi
+							if [ "$4" == "" ];then
+								notify_invalid_option $4
+							else
+								astparam s ppp_power_on "$COMMAND"
+								echo "PPP: New Power On Command Set [$COMMAND]"
+							fi
+						;;
+						off)
+							if [ $ISTX -eq 1 ];then
+								notify_invalid_hardware
+							fi
+							if [ "$4" == "" ];then
+								notify_invalid_option $4
+							else
+								astparam s ppp_power_off "$COMMAND"
+								echo "PPP: New Power Off Command Set [$COMMAND]"
+							fi
+						;;
+						method)
+							if [ $ISTX -eq 1 ];then
+								notify_invalid_hardware
+							fi
+							case $4 in
+								cec) astparam s ppp_power_method cec;;
+								rs232) astparam s ppp_power_method rs232;;
+								ir) astparam s ppp_power_method ir;;
+								*) notify_invalid_option $4;;
+							esac
+							echo "PPP: New Power Control Method Set [$4]"
+						;;
+						target)
+							if [ $ISTX -eq 0 ];then
+								notify_invalid_hardware
+							fi
+							PWVALIDATE=($(echo $4 | tr ',-' ' '))
+							for i in ${!PWVALIDATE[*]};do
+								if ! [ ${PWVALIDATE[i]} -eq ${PWVALIDATE[i]} ] 2>/dev/null;then
+									notify_invalid_option ${PWVALIDATE[i]}
+								fi
+							done
+							if ! [ "$4" == "" ];then
+								astparam s ppp_power_target $4 &>/dev/null
+								echo "PPP: New Power Control Targets (Receivers $4) Saved"
+							else
+								notify_invalid_option $4
+							fi
+						;;
+						*) 
+							notify_invalid_option $3
+						;;
+					esac
+				;;
+				*) notify_invalid_option $2;;
+			esac
+		;;
+		clear)
+			case $2 in
+				timeout) 
+					astparam s ppp_timeout &>/dev/null
+					echo "PPP: Cleared HDMI Disconnect Detection Delay setting"
+				;;
+				switch)
+					astparam s ppp_switch_target &>/dev/null
+					echo "PPP: Cleared Switch Control Target List"
+				;;
+				vw)
+					astparam s ppp_vw_target &>/dev/null
+					echo "PPP: Cleared Video Wall Control Target List"
+				;;
+				power)
+					case $3 in
+						on) 
+							astparam s ppp_power_on &>/dev/null
+							echo "PPP: Cleared Power On Command Setting"
+						;;
+						off) 
+							astparam s ppp_power_off &>/dev/null
+							echo "PPP: Cleared Power Off Command Setting"
+						;;
+						method) 
+							astparam s ppp_power_method &>/dev/null
+							echo "PPP: Cleared Power Control Method Setting"
+						;;
+						target)
+							astparam s ppp_power_target &>/dev/null
+							echo "PPP: Cleared Power Control Target List"
+						;;
+						*) 
+							echo "PPP: Clear All Power Settings? Type 'yes' to confirm and proceed:"
+							read CONFIRM
+							if [ "$CONFIRM" == "yes" ];then
+								astparam s ppp_power_on &>/dev/null
+								astparam s ppp_power_off &>/dev/null
+								astparam s ppp_power_method &>/dev/null
+								astparam s ppp_power_target &>/dev/null
+								echo "PPP: Cleared All Power Settings"
+							else
+								echo "PPP: Settings were not cleared [User input: '$CONFIRM' vs 'yes']"
+							fi
+						;;
+					esac
+				;;
+				all)
+					echo "PPP: WARNING! This will clear ALL Plug-Play-Present settings."
+					echo "PPP: WARNING! This action cannot be undone. Type 'yes' to confirm and proceed:"
+					read CONFIRM
+					if [ "$CONFIRM" == "yes" ];then
+						astparam s ppp_enable &>/dev/null
+						astparam s ppp_enable_power &>/dev/null
+						astparam s ppp_enable_switch &>/dev/null
+						astparam s ppp_enable_vw &>/dev/null
+						astparam s ppp_timeout &>/dev/null
+						astparam s ppp_switch_target &>/dev/null
+						astparam s ppp_vw_target &>/dev/null
+						astparam s ppp_power_target &>/dev/null
+						astparam s ppp_power_method &>/dev/null
+						astparam s ppp_power_on &>/dev/null
+						astparam s ppp_power_off &>/dev/null
+						echo "PPP: Cleared all Plug-Play-Present settings"
+					else
+						echo "PPP: Settings were not cleared [User input: '$CONFIRM' vs 'yes']"
+					fi
+				;;
+				*) notify_invalid_option $2;;
+			esac
+		;;
+	esac
+	astparam save
+}
+### Receiver Functions
+check_rs232_mode(){
+	export S2=$(astparam g soip_type2)
+	export GUEST=$(astparam g soip_guest_on)
+	if [ "$S2" == "y" ] && [ "$GUEST" == "y" ] ; then
+				export TYPE=2
+	elif [ "$S2" == "n" ] && [ "$GUEST" == "y" ] ; then
+				export TYPE=3
+	else
+		export S2=$(astparam r soip_type2)
+		export GUEST=$(astparam r soip_guest_on)
+		if [ "$S2" == "y" ] && [ "$GUEST" == "y" ] ; then
+			export TYPE=2
+		elif [ "$S2" == "n" ] && [ "$GUEST" == "y" ] ; then
+			export TYPE=3
+		fi
+	fi
+}
+send_serial(){
+	check_rs232_mode
+	case $TYPE in
+		2) printf "$COMMAND" | nc 127.0.0.1 6752;;
+		3) 
+			stty $BAUD -F /dev/ttyS0
+			if [ $(echo "$COMMAND" | grep -c '\\x08\\x22') -eq 0 ];then 
+				printf "$COMMAND" > /dev/ttyS0
+			else
+				printf "$COMMAND" > /dev/ttyS0
+				usleep 10000
+				printf "$COMMAND" > /dev/ttyS0
+				usleep 10000
+				printf "$COMMAND" > /dev/ttyS0
+			fi
+			;;
+		*) exit
+	esac
+}
+get_command(){
+	case $1 in
+		on)
+			if [ $(echo $(astparam g ppp_power_on) | grep -c "not defined") -gt 0 ];then
+				exit
+			else
+				export COMMAND=$(astparam g ppp_power_on)
+			fi
+		;;
+		off)
+			if [ $(echo $(astparam g ppp_power_off) | grep -c "not defined") -gt 0 ];then
+				exit
+			else
+				export COMMAND=$(astparam g ppp_power_off)
+			fi
+		;;
+	esac
+	# Handle \x syntax to add carriage returns to commands that use ascii
+	if [ $(echo "$COMMAND" | grep -c '\\x') == 0 ] 2> /dev/null;then
+		COMMAND="\x0d$COMMAND\x0d"
+	fi
+}
+handle_rx_cec(){
+	case $1 in
+		on) cec_tv_on.sh;;
+		off) cec_tv_off.sh;;
+	esac
+}
+handle_rx_ir(){
+	export BAUD=9600
+	get_command $1
+	send_serial
+}
+handle_rx_rs232(){
+	if [ $(echo $(astparam g s0_baudrate) | grep -c "not defined") -gt 0 ];then
+		export BAUD=9600
+	else
+		export BAUD=$(echo $(astparam g s0_baudrate) | cut -d'-' -f1)
+	fi
+	get_command $1
+	send_serial
+}
+handle_rx(){
+	export METHOD=$(astparam g ppp_power_method)
+	case $METHOD in
+		cec) handle_rx_cec $1;;
+		ir) handle_rx_ir $1;;
+		rs232) handle_rx_rs232 $1;;
+		*) exit;;
+	esac
+}
+### Transmitter Functions
+check_system_info(){
+	if [ "$(lmparam g RX_IP_LIST)" == "" ];then
+		echo "PPP: Receiver IP list is empty. Attempting to generate list."
+		getswitchinfo.sh vlans
+	fi
+}
+check_power_list(){
+	if [ "$(lmparam g PPP_POWER_TARGET)" == "" ];then
+		POWER_TARGETS=$(astparam g ppp_power_target)
+		if [ $(echo $POWER_TARGETS | grep -c not) -eq 0 ];then
+			echo "PPP: Power Target IP Addresses not yet defined. Correlating user data against system info."
+			# Data Validation
+			RX_SELECTION=($(echo $POWER_TARGETS | tr ',' ' '))
+			# Expand x-y syntax
+			for i in ${!RX_SELECTION[@]};do
+				CONSEC_TEST=${RX_SELECTION[i]}
+				if [ $(echo $CONSEC_TEST | grep \-) ];then
+					RX_SELECTION=(${RX_SELECTION[@]/${RX_SELECTION[i]}}) # remove consecutive element from the list
+					START=$(echo $CONSEC_TEST | cut -d'-' -f1)
+					END=$(echo $CONSEC_TEST | cut -d'-' -f2)
+					if [ $START -gt $END ];then # reverse the order if descending order supplied
+						START=$(echo $CONSEC_TEST | cut -d'-' -f2)
+						END=$(echo $CONSEC_TEST | cut -d'-' -f1)
+					fi
+					while [ $START -le $END ];do
+						RX_SELECTION=(${RX_SELECTION[@]} $START) # add incrementals of the consecutive element back into the array
+						START=$(($START+1))
+					done
+				fi
+			done
+			# Verify and correct for any duplications
+			RX_SELECTION=($(echo ${RX_SELECTION[@]} | tr ' ' '\n' | awk '!COPY_CHECKER[$0]++' | tr '\n' ' '))
+			if [ "$(lmparam g RX_IP_LIST)" != "" ];then
+				RX_IP_LIST=($(lmparam g RX_IP_LIST))
+				local PPP_POWER_TARGET
+				for i in ${RX_SELECTION[@]};do
+					if [ "$PPP_POWER_TARGET" == "" ];then
+						PPP_POWER_TARGET="${RX_IP_LIST[$(($i-1))]}"
+					else
+						PPP_POWER_TARGET="$PPP_POWER_TARGET ${RX_IP_LIST[$(($i-1))]}"
+					fi
+				done
+				lmparam s PPP_POWER_TARGET $PPP_POWER_TARGET
+			else
+				echo "PPP: ERROR! Receiver IP Addresses Cannot be found"
+			fi
+		fi
+	fi
+}
+get_vw_ip(){
+	if [ "$(lmparam g RX_IP_LIST)" != "" ];then
+		RX_IP_LIST=($(lmparam g RX_IP_LIST))
+		local THIS_TARGET_IP=${RX_IP_LIST[$(($1-1))]}
+		echo $THIS_TARGET_IP
+	fi
+}
+tell_rx_switch_to_me(){
+	if [ "$ACTIVE_SOURCE" == "n" ];then
+		getswitchinfo.sh vlans
+		local TARGET_RX=$(astparam g ppp_switch_target)
+		local ME=$(( ($(astparam g gatewayip | cut -d'.' -f4) + 3)/4 ))
+		switch rx$TARGET_RX tx$ME
+		echo "PPP: Setting Active Sourcer Status to 'YES'"
+		export ACTIVE_SOURCE="y"
+	fi
+}
+tell_rx_switch_back(){
+	if [ "$ACTIVE_SOURCE" == "y" ];then
+		local TARGET_RX=$(astparam g ppp_switch_target)
+		switch rx$TARGET_RX back
+		echo "PPP: Setting Active Source Status to 'NO'"
+		export ACTIVE_SOURCE="n"
+	fi
+}
+tell_rx_power_on(){
+	if [ "$ACTIVE_POWER" == "n" ];then
+		check_power_list
+		local PPP_POWER_TARGET=($(lmparam g PPP_POWER_TARGET))
+		for i in ${!PPP_POWER_TARGET[@]};do
+			echo "PPP: Sending Power On trigger to ${PPP_POWER_TARGET[i]}"
+			telcom ${PPP_POWER_TARGET[i]} "ppp power on" -s 1 &
+		done
+		if [ "$1" == "lock" ];then
+			echo "PPP: Setting Active Power Status to 'YES'"
+			export ACTIVE_POWER="y"
+		fi
+	fi
+}
+tell_rx_power_off(){
+	if [ "$ACTIVE_POWER" == "y" ];then
+		check_power_list
+		local PPP_POWER_TARGET=($(lmparam g PPP_POWER_TARGET))
+		for i in ${!PPP_POWER_TARGET[@]};do
+			echo "PPP: Sending Power Off trigger to ${PPP_POWER_TARGET[i]}"
+			telcom ${PPP_POWER_TARGET[i]} "ppp power off" -s 1 &
+		done
+		if [ "$1" == "lock" ];then
+			echo "PPP: Setting Active Power Status to 'NO'"
+			export ACTIVE_POWER="n"
+		fi
+	fi
+}
+tell_rx_vw_change(){
+	telcom $1 "astparam dump;sleep 1" -e -s 2 > /var/tmp/vwinfo/$1
+	local VW_COMMAND=$(printf "e e_vw_enable_$2_$3_$4_$5")
+	echo "PPP: Setting RX @ $1 to Row $(($4 + 1)) Column $(($5 + 1)) in a $(($2 + 1))x$(($3 + 1)) Video Wall"
+	telcom $1 "$VW_COMMAND"
+}
+tell_rx_vw_change_back(){
+		local OLDROW=$(cat /var/tmp/vwinfo/$1 | grep vw_row | cut -d'=' -f2 | tr '\n\r ' '\x0')
+		local OLDCOL=$(cat /var/tmp/vwinfo/$1 | grep vw_col | cut -d'=' -f2 | tr '\n\r ' '\x0')
+		local OLDTOTALROW=$(cat /var/tmp/vwinfo/$1 | grep vw_max_row | cut -d'=' -f2 | tr '\n\r ' '\x0')
+		local OLDTOTALCOL=$(cat /var/tmp/vwinfo/$1 | grep vw_max_col | cut -d'=' -f2 | tr '\n\r ' '\x0')
+		local VW_COMMAND=$(printf "e e_vw_enable_$OLDTOTALROW-$OLDTOTALCOL-$OLDROW-$OLDCOL" | sed 's/-/_/g')
+		echo "PPP: Restoring RX @ $1 to Row $(($OLDROW + 1)) Column $(($OLDCOL + 1)) in a $(($OLDTOTALROW + 1))x$(($OLDTOTALCOL + 1)) Video Wall"
+		telcom $1 "$VW_COMMAND"
+}
+handle_vw_change(){
+	if [ "$ACTIVE_VW" == "n" ];then
+		if [ $(astparam g ppp_vw_target | grep -c not) -eq 0 ];then
+			rm -rf /var/tmp/vwinfo 2> /dev/null
+			mkdir /var/tmp/vwinfo 2> /dev/null
+			VW_TARGET=($(astparam g ppp_vw_target))
+			for i in ${!VW_TARGET[*]};do
+				TARGET_IP=$(get_vw_ip $(echo ${VW_TARGET[i]} | cut -d',' -f1))
+				TARGET_POS=$(echo ${VW_TARGET[i]} | cut -d',' -f2)
+				TARGET_SIZE=$(echo ${VW_TARGET[i]} | cut -d',' -f3)
+				MY_ROW=$(($(echo $TARGET_POS | cut -d'r' -f2 | cut -d'c' -f1) - 1))
+				MY_COL=$(($(echo $TARGET_POS | cut -d'r' -f2 | cut -d'c' -f2) - 1))
+				TOTAL_ROW=$(($(echo $TARGET_SIZE | cut -d'x' -f1) - 1))
+				TOTAL_COL=$(($(echo $TARGET_SIZE | cut -d'x' -f2) - 1))
+				tell_rx_vw_change $TARGET_IP $TOTAL_ROW $TOTAL_COL $MY_ROW $MY_COL &
+			done
+			sleep 3
+			export ACTIVE_VW="y"
+		fi
+	fi
+}
+handle_vw_change_back(){
+	if [ "$ACTIVE_VW" == "y" ];then
+		if [ $(astparam g ppp_vw_target | grep -c not) -eq 0 ];then
+			VW_TARGET=($(astparam g ppp_vw_target))
+			for i in ${!VW_TARGET[*]};do
+				TARGET_IP=$(get_vw_ip $(echo ${VW_TARGET[i]} | cut -d',' -f1))
+				tell_rx_vw_change_back $TARGET_IP &
+			done
+			sleep 3
+			export ACTIVE_VW="n"
+		fi
+	fi
+}
+handle_tx(){
+	if [ "$(astparam g ppp_enable)" == "y" ];then
+		echo "PPP: Starting Plug-Play-Present(TM) Monitor"
+		export ACTIVE_POWER="n"
+		export ACTIVE_SOURCE="n"
+		export ACTIVE_VW="n"
+		check_system_info
+	fi
+	while [ "$(astparam g ppp_enable)" == "y" ] ; do
+		export V_STATUS=$(cat /var/ast_device_status)
+		if [ "$V_STATUS" == "s_srv_on" ];then
+			if [ "$(astparam g ppp_enable_power)" == "y" ];then
+				tell_rx_power_on 
+			fi
+			if [ "$(astparam g ppp_enable_switch)" == "y" ];then
+				tell_rx_switch_to_me
+			fi
+			if [ "$(astparam g ppp_enable_power)" == "y" ];then
+				tell_rx_power_on lock 
+			fi
+			if [ "$(astparam g ppp_enable_vw)" == "y" ];then
+				handle_vw_change
+			fi
+		elif [ "$V_STATUS" == "s_attaching" ];then	
+			OFF_STOP=0
+			if [ $(astparam g ppp_timeout) -gt 0 ] 2> /dev/null;then
+				COUNT=0
+				SLEEPTIME=$(astparam g ppp_timeout)
+				while [ $COUNT -lt $SLEEPTIME ];do
+					sleep 1
+					export V_STATUS=$(cat /var/ast_device_status)
+					if [ "$V_STATUS" == "s_srv_on" ];then
+						OFF_STOP=1
+						COUNT=$SLEEPTIME
+					else
+						COUNT=$(($COUNT+1))
+					fi
+				done
+			fi
+			if [ $OFF_STOP -eq 0 ];then
+				if [ "$(astparam g ppp_enable_power)" == "y" ];then
+					tell_rx_power_off
+				fi
+				if [ "$(astparam g ppp_enable_vw)" == "y" ];then
+					handle_vw_change_back
+				fi
+				if [ "$(astparam g ppp_enable_switch)" == "y" ];then
+					tell_rx_switch_back
+				fi
+				if [ "$(astparam g ppp_enable_power)" == "y" ];then
+					tell_rx_power_off lock
+				fi
+			fi
+		fi
+		sleep 1
+	done
+}
+
+export ISTX=$(cat /www/index.html | grep title | cut -d'-' -f1 | cut -d'>' -f2 | grep -c T)
+case $1 in
+	start) 
+		if [ $ISTX -eq 1 ];then
+			handle_tx &
+		else
+			notify_invalid_hardware
+		fi
+	;;
+	enable|disable)
+		if [ $ISTX -eq 1 ];then
+			set_parameters $@
+		else
+			notify_invalid_hardware
+		fi
+	;;
+	set|clear) 
+		set_parameters $@
+	;;
+	power) 
+		if [ $ISTX -eq 0 ];then
+			handle_rx $2;
+		else
+			notify_invalid_hardware
+		fi
+	;;
+	help|-help|--help) code;;
+	*) notify_invalid_option $1;;
+esac

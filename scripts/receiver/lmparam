@@ -1,0 +1,61 @@
+#!/bin/sh
+
+. /usr/local/bin/bash/utilities.sh
+
+cmd="$1"
+shift
+arg1="$1"
+shift
+arg2="$*"
+
+case "$cmd" in
+	g)
+		__token=$RANDOM
+		if [ -f /var/lm_var$__token ]; then
+		rm -f /var/lm_var$__token
+			sleep 0.01
+		fi
+		mknod /var/lm_var$__token p
+		sleep 0.01
+		( ast_send_event -1 e_var_get::$arg1::$__token ) &
+		sleep 0.01
+		cat /var/lm_var$__token
+		sleep 0.01
+		rm -f /var/lm_var$__token
+	;;
+	s)
+		e e_var_set::$arg1::$arg2
+	;;
+	dump)
+		__token=$RANDOM
+		if [ -f /var/lmparams$__token ]; then
+		rm -f /var/lmparams$__token
+			sleep 0.01
+		fi
+		mknod /var/lmparams$__token p
+		sleep 0.01
+		(  ast_send_event -1 e_var_dump::ini::$__token ) &
+		sleep 0.01
+		cat /var/lmparams$__token
+		sleep 0.01
+		rm -f /var/lmparams$__token
+	;;
+	jdump)
+		__token=$RANDOM
+		if [ -f /var/lmparams$__token ]; then
+		rm -f /var/lmparams$__token
+			sleep 0.01
+		fi
+		mknod /var/lmparams$__token p
+		sleep 0.01
+		( ast_send_event -1 e_var_dump::json::$__token ) &
+		sleep 0.01
+		cat /var/lmparams$__token
+		sleep 0.01
+		rm -f /var/lmparams$__token
+	;;
+	*)
+		echo "invalid command"
+	;;
+esac
+

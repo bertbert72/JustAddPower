@@ -1,0 +1,10 @@
+#!/bin/bash
+# Last Modified 2017-10-17 - Just Add Power
+echo 2 98 > /sys/devices/platform/i2c/io_select
+echo 0 1 > /sys/devices/platform/i2c/i_range
+VGA=$(cat /sys/devices/platform/i2c/io_value  | tail -n 1 | awk '{print $2}')
+if [ -z $VGA ];then
+	echo 0
+else
+	echo 1
+fi

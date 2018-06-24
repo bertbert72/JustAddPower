@@ -1,0 +1,52 @@
+#!/bin/sh
+source GW_IIC_FUNC
+
+echo 3 60 > $IO_SELECT
+
+i=
+
+#	ready to read?
+echo $CEC_RDY_TOREAD 0x1 > $I_RANGE
+for i in 1 2 3 4 5
+do
+  arg=$(cat $IO_VALUE  | tail -n 1 |awk '{print $2}')
+	if [ $arg -eq 1 ]; then
+	 	break
+	fi
+	sleep 1
+done
+
+
+if [ $i -ge 5 ]; then
+  echo READ NOT READY
+  exit
+fi
+
+
+#	get total length to read
+echo $CEC_READ_BYTES 0x1 > $I_RANGE
+No=$(cat $IO_VALUE  | tail -n 1 |awk '{print $2}')
+No=$(hex_2_ten $No)
+
+
+#	read bytes
+#echo $FUNC_TYPE_OFFSET $CEC_SEND > $IO_VALUE
+
+i=0
+while [ $i -lt $No ]
+do
+ echo $CEC_READ 1 > $I_RANGE
+ arg=$(cat $IO_VALUE  | tail -n 1 | awk '{print $2}')
+ arg=$(hex_2_ten $arg)
+ eval iarray$i=$arg
+ i=$(expr $i + 1)
+done
+
+
+i=0
+while [ $i -lt $No ]
+do               
+ printf "%02x," $(eval echo \$iarray$i)
+ i=$(expr $i + 1)
+done
+echo

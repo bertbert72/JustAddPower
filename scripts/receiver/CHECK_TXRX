@@ -1,0 +1,9 @@
+#!/bin/bash
+# Last Modified 2017-09-18 - Just Add Power
+# Checks if unit is a TX or RX
+m=$(echo $AST_PLATFORM | grep -c c)
+if [ $m -eq 1 ];then
+	echo RX
+else
+	echo TX
+fi

@@ -1,0 +1,14 @@
+#!/bin/sh
+source GW_IIC_FUNC
+
+echo 3 a0 > $IO_SELECT
+
+if [ $(CEC_BUS_STATE) -eq 1 ]; then  
+	echo BUSY
+	return;
+fi
+
+echo $FUNC_TYPE_OFFSET $CEC_TV_OFF > $IO_VALUE
+
+
+echo $FUNC_TYPE_OFFSET $IIC_STATMNT_FIN > $IO_VALUE

@@ -1,0 +1,82 @@
+#!/bin/bash
+## Last Modified 2017-06-21 - Just Add Power
+## telcom $IPADDR "$COMMAND"
+## Telnet to a target IP address and execute a single command on the remote machine. (Echo back response?)
+## To-Do: Add options to set sleep value (-s1) 
+
+code(){
+	echo "TELCOM:"
+	echo "	Command"
+	echo '		telcom [ipaddress] [options] "command to be sent"'
+	echo '	Options'
+	echo '		[-e] [-s #] [-l username/password]'
+	echo '	Description'
+	echo '		-e: Echo back the response from the remote session'
+	echo '		-s: Sleep for # of seconds before closing remote session'
+	echo '		-l: Specify a login [username/password] for the remote connection'
+	echo "	Example"
+	echo '		telcom 10.128.0.2 "reboot"'
+	echo '		telcom 10.128.0.2 -e -s 3 "astparam dump"'
+	echo '		telcom 192.168.1.254 -s 5 -e -l admin/admin "show run"'
+	exit
+}
+
+# Verify valid number of parameters and error if wrong
+if [ $# -lt 2 ] || [ $# -gt 7 ];then
+	code
+fi
+
+# Confirm target is reachable over network and error if unreachable
+IPADDR=$1
+if [ "$(ping $IPADDR | grep -c !)" != "1" ];then
+	echo "TELCOM: ERROR! Device at $IPADDR could not be reached"
+	exit
+fi
+
+# Evluate arguments and set variables
+while [ $# -ne 0 ];do
+	export ARG="$1"
+	case "$ARG" in
+		-e) ECHO=1;;
+		-s) 
+			shift
+			if [ $1 -eq $1 ] 2> /dev/null;then
+				SLEEP=$1
+			else
+				echo "TELCOM: Invalid sleep parameter: \"$1\" is not a number."
+				code
+			fi
+			;;
+		-l) 
+			shift
+			USERNAME=$(echo $1 | cut -d'/' -f1)
+			PASSWORD=$(echo $1 | cut -d'/' -f2)
+			;;
+		-*) 
+			echo "TELCOM: Invalid option \"$ARG\""
+			code
+			;;
+		[0-2][0-9][0-9].*|[0-9][0-9].*|[0-9].*) IPADDR=$ARG;;
+		*) COMMAND="$ARG";;
+	esac
+	shift
+done
+
+# Send command using determined values
+(
+	usleep 100000
+	if [ "$USERNAME" != "" ] 2> /dev/null;then
+		printf "$USERNAME\r$PASSWORD\r"
+		usleep 100000
+	fi
+	printf "\r$COMMAND\r"
+	sleep $SLEEP
+	usleep 100000
+	printf "exit\r"
+) | telnet $IPADDR 2> /dev/null > TELCOM_LOG_$IPADDR
+
+# Echo back response from remote machine if requested
+if [ $ECHO -eq 1 ] 2> /dev/null;then
+	cat TELCOM_LOG_$IPADDR | sed "s/^/TELCOM-$IPADDR: /g"
+fi
+

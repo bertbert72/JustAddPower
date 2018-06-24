@@ -1,0 +1,23 @@
+#!/bin/sh
+source GW_IIC_FUNC
+
+if [ $# -eq 0 ]; then
+ return;
+fi
+
+echo 3 a0 > $IO_SELECT
+
+if [ $(CEC_BUS_STATE) -eq 1 ]; then  
+	echo BUSY
+	return;
+fi
+
+echo $FUNC_TYPE_OFFSET $CEC_SEND > $IO_VALUE
+arg=$(ten_2_hex $#)
+echo $SET_ARGS_OFFSET $arg > $IO_VALUE
+
+for f in $@; do
+	echo $SET_ARGS_OFFSET $f > $IO_VALUE
+done 
+
+echo $FUNC_TYPE_OFFSET $IIC_STATMNT_FIN > $IO_VALUE

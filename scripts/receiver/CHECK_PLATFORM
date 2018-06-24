@@ -1,0 +1,9 @@
+#!/bin/bash
+# Last Modified 2017-09-18 - Just Add Power
+# Checks Platform and returns 2G, Omega, or 3G
+p=$(echo $AST_PLATFORM | cut -d't' -f2 | cut -d'-' -f1)
+case $p in
+	1500*) echo 2G;;
+	1525) echo Omega;;
+	1520) echo 3G;;
+esac

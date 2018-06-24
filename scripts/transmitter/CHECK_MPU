@@ -1,0 +1,11 @@
+#!/bin/bash
+# Last Modified 2017-10-17 - Just Add Power
+echo 4 4000 > /sys/devices/platform/i2c/bus_init
+echo 4 a0 > /sys/devices/platform/i2c/io_select
+echo a1 1 > /sys/devices/platform/i2c/i_range
+MPU=$(cat /sys/devices/platform/i2c/io_value  | tail -n 1 | awk '{print $2}')
+if [ -z $MPU ];then
+	echo 0
+else
+	echo 1
+fi

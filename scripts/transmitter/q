@@ -1,0 +1,8 @@
+#!/bin/bash
+# Queues up commands and sends them to master shell command pipe
+
+if [ $# -eq 0 ];then
+	exit
+fi
+
+echo $@ > /var/command_pipe &

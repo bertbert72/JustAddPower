@@ -1,0 +1,13 @@
+#!/bin/sh
+source GW_IIC_FUNC
+
+echo 3 a0 > $IO_SELECT
+if [ $# -eq 0 ]; then
+ echo $FUNC_TYPE_OFFSET $AUD_FASTER > $IO_VALUE
+else
+ echo $FUNC_TYPE_OFFSET $AUD_FAST_VAL > $IO_VALUE
+ echo $SET_ARGS_OFFSET 1 > $IO_VALUE
+ arg=$(ten_2_hex $1)
+ echo $SET_ARGS_OFFSET $arg > $IO_VALUE
+fi
+ echo $FUNC_TYPE_OFFSET $IIC_STATMNT_FIN > $IO_VALUE

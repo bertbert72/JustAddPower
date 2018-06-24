@@ -1,0 +1,52 @@
+#!/bin/sh
+#channel
+export MAC=$(ifconfig | grep eth0:stat | cut -d' ' -f6)
+export GW=$(astparam g gatewayip)
+export PORT=$(astparam g switchport)
+export TOTAL_SOURCES=$(astparam g totalsources)
+let MAX_TX=10+$TOTAL_SOURCES
+export MAX_TX
+export CURRENT_TX=$(astparam g currentvlan)
+export NEW_TX=11
+export SWITCH=$(astparam g switch)
+if [ "$1" == "up" ] ; then
+	if [ $CURRENT_TX == $MAX_TX ] ; then
+		export NEW_TX=11
+	else
+		let NEW_TX=$CURRENT_TX+1
+		export NEW_TX
+	fi
+elif [ "$1" == "down" ] ; then
+	if [ $CURRENT_TX == 11 ] ; then
+		export NEW_TX=$MAX_TX
+	else
+		let NEW_TX=$CURRENT_TX-1
+		export NEW_TX
+	fi
+elif [ $1 == $1 ] && [ $1 -ge 1 ] && [ $1 -le $TOTAL_SOURCES ] ; then
+	let NEW_TX=$1+10
+	export NEW_TX
+fi
+if [ "$SWITCH" == "Cisco" ] ; then
+(
+	printf "cisco\r"
+	printf "cisco\r"
+	printf "ena\r conf\r int $PORT\r sw g al v r 11-399\r sw g al v a $NEW_TX u\r end\r"
+	sleep 1
+	printf "exit\r"
+) | telnet $GW > SWITCHING_LOG &
+elif [ "$SWITCH" == "Luxul" ] ; then
+(
+	printf "admin\r"
+	printf "admin\r"
+	sleep 1
+	printf "enable\r conf t\r int $PORT\r sw hy al vl rem 11-399\r sw hy al vl ad $NEW_TX\r end\r"
+	sleep 1
+	printf "exit\r"
+) | telnet $GW > SWITCHING_LOG &
+fi
+astparam s currentvlan $NEW_TX
+let CHANNEL=$NEW_TX-10
+export OSD_STR=$CHANNEL
+osd_on_tl.sh 1> /dev/null
+osd_off.sh 2&

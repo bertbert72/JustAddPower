@@ -1,0 +1,6 @@
+#!/bin/sh
+# Image Pull(TM) Copyright 2013 Just Add Power - All Rights Reserved
+# start_image_pull [pixel width] [0/1 priority] [delay in seconds between captures]
+# start script by killing previous captures then passing parameters to image_pull
+stop_image_pull
+image_pull $1 $2 $3 &

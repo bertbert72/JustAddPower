@@ -1,0 +1,15 @@
+#!/bin/sh
+
+if [ "$1" == "on" ] ; then
+	if [ "$2" == "tl" ] ; then
+		printf "GUI_show_picture::default.jpg::n\0" > /var/info_gui_action
+		echo 1 31 1 -1 480 > /sys/devices/platform/display/osd_from_gui
+	else
+		printf "GUI_show_picture::default.jpg::n\0" > /var/info_gui_action
+		echo 1 31 1 0 480 > /sys/devices/platform/display/osd_from_gui
+	fi
+elif [ "$1" == "off" ] ; then	
+	echo 0 > /sys/devices/platform/display/osd_from_gui
+	printf "GUI_show_picture::default.jpg::y\0" > /var/info_gui_action
+	
+fi

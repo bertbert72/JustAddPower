@@ -1,0 +1,43 @@
+#!/bin/sh
+source GW_IIC_FUNC
+
+echo 3 60 > $IO_SELECT
+
+i=
+
+#	get total length to read
+echo $VOL_READ_BYTES 0x1 > $I_RANGE
+No=$(cat $IO_VALUE  | tail -n 1 |awk '{print $2}')
+
+if [ -z $No ]; 
+then
+	echo No version queuery
+	exit
+fi
+
+No=$(hex_2_ten $No)
+
+
+
+
+i=0
+while [ $i -lt $No ]
+do
+ echo $VOL_READ 1 > $I_RANGE
+ arg=$(cat $IO_VALUE  | tail -n 1 | awk '{print $2}')
+ arg=$(hex_2_ten $arg)
+ eval iarray$i=$arg
+ i=$(expr $i + 1)
+done
+
+
+i=0
+while [ $i -lt $No ]
+do
+ c=$(eval echo \$iarray$i)
+ c1=$(ten_2_hex $c)   
+ c2="\x$c1"
+ c3=$c3$(printf "$c2")
+ i=$(expr $i + 1)
+done                  
+echo $c3

@@ -1,0 +1,23 @@
+#!/bin/bash
+# cmdpipe
+
+rm -rf /var/command_pipe
+mknod /var/command_pipe p:
+
+while true;do
+	cat < /var/command_pipe | tr ' ' '~' > /var/tmp/.cmdpipefile
+	CMDARRAY=($(cat /var/tmp/.cmdpipefile))
+	for i in ${!CMDARRAY[*]};do
+		if [ $(echo ${CMDARRAY[i]} | grep -c switch) -eq 1 ];then
+			COMMAND=$(echo ${CMDARRAY[i]} | tr '~' ' ')
+			echo "CMDPIPE-PRIORITY: $COMMAND"
+			$COMMAND
+			CMDARRAY=(${CMDARRAY[@]/${CMDARRAY[i]}})
+		fi
+	done
+	for i in ${!CMDARRAY[*]};do
+		COMMAND=$(echo ${CMDARRAY[i]} | tr '~' ' ')
+		echo "CMDPIPE: $COMMAND"
+		$COMMAND
+	done
+done

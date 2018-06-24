@@ -1,0 +1,13 @@
+#!/bin/sh
+module="cec_drv"
+device="CECoIP_drv"
+mode="777"
+
+insmod ./$module.ko $* || exit 1
+
+rm -f /dev/${device}
+
+major=`cat /proc/devices | awk "\\$2==\"$module\" {print \\$1}"`
+mknod /dev/${device} c $major 0       
+
+CEC_guest

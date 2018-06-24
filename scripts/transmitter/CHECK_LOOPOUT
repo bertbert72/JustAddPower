@@ -1,0 +1,7 @@
+#!/bin/bash
+# Last Modified 2017-10-17 - Just Add Power
+if [ $(cat /sys/devices/platform/scu/board_info | grep Loopback | grep -c 2) -eq 0 ];then
+	echo 0
+else
+	echo 1
+fi

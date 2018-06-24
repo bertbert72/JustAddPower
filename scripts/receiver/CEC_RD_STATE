@@ -1,0 +1,11 @@
+#!/bin/sh
+source GW_IIC_FUNC
+
+echo 3 a0 > $IO_SELECT
+echo $CEC_RDY_TOREAD 0x1 > $I_RANGE
+arg=$(cat $IO_VALUE  | tail -n 1 |awk '{print $2}')
+if [ $arg -eq 0 ]; then
+ echo 0
+else
+ echo 1
+fi
